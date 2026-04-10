@@ -1,0 +1,99 @@
+<!--
+  Paste the full contents of this file into a Grafana Text panel (HTML mode)
+  to add a one-click PDF export button to your dashboard.
+
+  Requirements:
+    grafana.ini → [panels] → disable_sanitize_html = true
+
+  If Grafana is accessed from another machine, update SERVER_URL below.
+-->
+
+<style>
+  #gfexp-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: Inter, Helvetica, Arial, sans-serif;
+  }
+  #gfexp-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #f05a28;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    padding: 7px 16px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.15s;
+    white-space: nowrap;
+  }
+  #gfexp-btn:hover    { background: #d44d1f; }
+  #gfexp-btn:disabled { background: #555; cursor: not-allowed; }
+  #gfexp-msg { font-size: 12px; }
+  #gfexp-msg.ok  { color: #73bf69; }
+  #gfexp-msg.err { color: #f2495c; }
+</style>
+
+<div id="gfexp-wrap">
+  <button id="gfexp-btn" onclick="gfexpExport()">↓ Export PDF</button>
+  <span   id="gfexp-msg"></span>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  var SERVER_URL = 'http://localhost:3001';
+
+  window.gfexpExport = async function () {
+    var btn = document.getElementById('gfexp-btn');
+    var msg = document.getElementById('gfexp-msg');
+
+    btn.disabled    = true;
+    btn.textContent = '⏳ Generating…';
+    msg.className   = '';
+    msg.textContent = '';
+
+    try {
+      var p     = new URLSearchParams(window.location.search);
+      var from  = p.get('from')  || 'now-6h';
+      var to    = p.get('to')    || 'now';
+      var theme = p.get('theme') || 'dark';
+      var url   = window.location.href.split('?')[0]
+                + '?orgId=1&theme=' + encodeURIComponent(theme) + '&kiosk';
+
+      var res = await fetch(SERVER_URL + '/generate-pdf', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ url, from, to }),
+      });
+
+      if (!res.ok) {
+        var e = await res.json().catch(() => ({}));
+        throw new Error(e.error || 'HTTP ' + res.status);
+      }
+
+      var data = await res.json();
+      if (!data.url) throw new Error('No PDF URL in response.');
+
+      var win = window.open(data.url, '_blank');
+      if (!win) throw new Error('Popup blocked — please allow popups for this site.');
+
+      msg.className   = 'ok';
+      msg.textContent = '✔ PDF ready';
+
+    } catch (err) {
+      msg.className   = 'err';
+      msg.textContent = '✖ ' + err.message;
+      console.error('[grafana-pdf-exporter]', err);
+
+    } finally {
+      btn.disabled    = false;
+      btn.textContent = '↓ Export PDF';
+    }
+  };
+})();
+</script>
